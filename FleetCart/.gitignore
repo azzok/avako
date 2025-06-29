@@ -7,12 +7,11 @@
 *.sublime-project
 .DS_Store
 
-#Env
-.env
+
 
 #Dependencies
 node_modules/
-/vendor/
+
 
 #Assets
 public/build/
