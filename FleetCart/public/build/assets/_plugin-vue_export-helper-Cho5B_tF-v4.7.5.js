@@ -1,0 +1,1 @@
+import{d as a}from"./vue-toast-notification-CTrnZnlT-v4.7.5.js";function i(t,o={}){a.useToast().open({message:t,type:o.type||"default",duration:5e3,dismissible:!0,position:"top-right",pauseOnHover:!0,...o})}const n=(t,o)=>{const e=t.__vccOpts||t;for(const[s,r]of o)e[s]=r;return e};export{n as _,i as t};
