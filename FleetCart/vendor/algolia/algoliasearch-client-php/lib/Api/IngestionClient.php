@@ -6,6 +6,8 @@ namespace Algolia\AlgoliaSearch\Api;
 
 use Algolia\AlgoliaSearch\Algolia;
 use Algolia\AlgoliaSearch\Configuration\IngestionConfig;
+use Algolia\AlgoliaSearch\Exceptions\ExceededRetriesException;
+use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
 use Algolia\AlgoliaSearch\Model\Ingestion\Authentication;
 use Algolia\AlgoliaSearch\Model\Ingestion\AuthenticationCreate;
 use Algolia\AlgoliaSearch\Model\Ingestion\AuthenticationCreateResponse;
@@ -69,12 +71,17 @@ use GuzzleHttp\Psr7\Query;
  */
 class IngestionClient
 {
-    public const VERSION = '4.19.0';
+    public const VERSION = '4.23.0';
 
     /**
      * @var ApiWrapperInterface
      */
     protected $api;
+
+    /**
+     * @var IngestionClient
+     */
+    protected $ingestionTransporter;
 
     /**
      * @var IngestionConfig
@@ -116,7 +123,9 @@ class IngestionClient
             self::getClusterHosts($config)
         );
 
-        return new static($apiWrapper, $config);
+        $client = new static($apiWrapper, $config);
+
+        return $client;
     }
 
     /**
@@ -350,8 +359,10 @@ class IngestionClient
      * Creates a new transformation.
      *
      * @param array|TransformationCreate $transformationCreate Request body for creating a transformation. (required)
-     *                                                         - $transformationCreate['code'] => (string) The source code of the transformation. (required)
+     *                                                         - $transformationCreate['code'] => (string) It is deprecated. Use the `input` field with proper `type` instead to specify the transformation code.
      *                                                         - $transformationCreate['name'] => (string) The uniquely identified name of your transformation. (required)
+     *                                                         - $transformationCreate['type'] => (array)
+     *                                                         - $transformationCreate['input'] => (array)
      *                                                         - $transformationCreate['description'] => (string) A descriptive name for your transformation of what it does.
      *                                                         - $transformationCreate['authenticationIDs'] => (array) The authentications associated with the current transformation.
      *
@@ -381,7 +392,7 @@ class IngestionClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
      *
@@ -420,7 +431,7 @@ class IngestionClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
      *
@@ -459,7 +470,7 @@ class IngestionClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $body           Parameters to send with the custom request. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
@@ -499,7 +510,7 @@ class IngestionClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $body           Parameters to send with the custom request. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
@@ -1791,7 +1802,78 @@ class IngestionClient
     }
 
     /**
-     * Push a `batch` request payload through the Pipeline. You can check the status of task pushes with the observability endpoints.
+     * Pushes records through the Pipeline, directly to an index. You can make the call synchronous by providing the `watch` parameter, for asynchronous calls, you can use the observability endpoints and/or debugger dashboard to see the status of your task. If you want to leverage the [pre-indexing data transformation](https://www.algolia.com/doc/guides/sending-and-managing-data/send-and-update-your-data/how-to/transform-your-data/), this is the recommended way of ingesting your records. This method is similar to `pushTask`, but requires an `indexName` instead of a `taskID`. If zero or many tasks are found, an error will be returned.
+     *
+     * Required API Key ACLs:
+     *  - addObject
+     *  - deleteIndex
+     *  - editSettings
+     *
+     * @param string                $indexName       Name of the index on which to perform the operation. (required)
+     * @param array|PushTaskPayload $pushTaskPayload pushTaskPayload (required)
+     *                                               - $pushTaskPayload['action'] => (array)  (required)
+     *                                               - $pushTaskPayload['records'] => (array)  (required)
+     *
+     * @see PushTaskPayload
+     *
+     * @param bool   $watch              When provided, the push operation will be synchronous and the API will wait for the ingestion to be finished before responding. (optional)
+     * @param string $referenceIndexName This is required when targeting an index that does not have a push connector setup (e.g. a tmp index), but you wish to attach another index's transformation to it (e.g. the source index name). (optional)
+     * @param array  $requestOptions     the requestOptions to send along with the query, they will be merged with the transporter requestOptions
+     *
+     * @return array<string, mixed>|WatchResponse
+     */
+    public function push($indexName, $pushTaskPayload, $watch = null, $referenceIndexName = null, $requestOptions = [])
+    {
+        // verify the required parameter 'indexName' is set
+        if (!isset($indexName)) {
+            throw new \InvalidArgumentException(
+                'Parameter `indexName` is required when calling `push`.'
+            );
+        }
+        // verify the required parameter 'pushTaskPayload' is set
+        if (!isset($pushTaskPayload)) {
+            throw new \InvalidArgumentException(
+                'Parameter `pushTaskPayload` is required when calling `push`.'
+            );
+        }
+
+        $resourcePath = '/1/push/{indexName}';
+        $queryParameters = [];
+        $headers = [];
+        $httpBody = $pushTaskPayload;
+
+        if (null !== $watch) {
+            $queryParameters['watch'] = $watch;
+        }
+
+        if (null !== $referenceIndexName) {
+            $queryParameters['referenceIndexName'] = $referenceIndexName;
+        }
+
+        // path params
+        if (null !== $indexName) {
+            $resourcePath = str_replace(
+                '{indexName}',
+                ObjectSerializer::toPathValue($indexName),
+                $resourcePath
+            );
+        }
+
+        if (!isset($requestOptions['readTimeout'])) {
+            $requestOptions['readTimeout'] = 180;
+        }
+        if (!isset($requestOptions['writeTimeout'])) {
+            $requestOptions['writeTimeout'] = 180;
+        }
+        if (!isset($requestOptions['connectTimeout'])) {
+            $requestOptions['connectTimeout'] = 180;
+        }
+
+        return $this->sendRequest('POST', $resourcePath, $headers, $queryParameters, $httpBody, $requestOptions);
+    }
+
+    /**
+     * Pushes records through the Pipeline, directly to an index. You can make the call synchronous by providing the `watch` parameter, for asynchronous calls, you can use the observability endpoints and/or debugger dashboard to see the status of your task. If you want to leverage the [pre-indexing data transformation](https://www.algolia.com/doc/guides/sending-and-managing-data/send-and-update-your-data/how-to/transform-your-data/), this is the recommended way of ingesting your records. This method is similar to `push`, but requires a `taskID` instead of a `indexName`, which is useful when many `destinations` target the same `indexName`.
      *
      * Required API Key ACLs:
      *  - addObject
@@ -1799,7 +1881,7 @@ class IngestionClient
      *  - editSettings
      *
      * @param string                $taskID          Unique identifier of a task. (required)
-     * @param array|PushTaskPayload $pushTaskPayload Request body of a Search API `batch` request that will be pushed in the Connectors pipeline. (required)
+     * @param array|PushTaskPayload $pushTaskPayload pushTaskPayload (required)
      *                                               - $pushTaskPayload['action'] => (array)  (required)
      *                                               - $pushTaskPayload['records'] => (array)  (required)
      *
@@ -2247,7 +2329,9 @@ class IngestionClient
      *  - editSettings
      *
      * @param array|TransformationTry $transformationTry transformationTry (required)
-     *                                                   - $transformationTry['code'] => (string) The source code of the transformation. (required)
+     *                                                   - $transformationTry['code'] => (string) It is deprecated. Use the `input` field with proper `type` instead to specify the transformation code.
+     *                                                   - $transformationTry['type'] => (array)
+     *                                                   - $transformationTry['input'] => (array)
      *                                                   - $transformationTry['sampleRecord'] => (array) The record to apply the given code to. (required)
      *                                                   - $transformationTry['authentications'] => (array)
      *
@@ -2284,7 +2368,9 @@ class IngestionClient
      *
      * @param string                  $transformationID  Unique identifier of a transformation. (required)
      * @param array|TransformationTry $transformationTry transformationTry (required)
-     *                                                   - $transformationTry['code'] => (string) The source code of the transformation. (required)
+     *                                                   - $transformationTry['code'] => (string) It is deprecated. Use the `input` field with proper `type` instead to specify the transformation code.
+     *                                                   - $transformationTry['type'] => (array)
+     *                                                   - $transformationTry['input'] => (array)
      *                                                   - $transformationTry['sampleRecord'] => (array) The record to apply the given code to. (required)
      *                                                   - $transformationTry['authentications'] => (array)
      *
@@ -2593,8 +2679,10 @@ class IngestionClient
      *
      * @param string                     $transformationID     Unique identifier of a transformation. (required)
      * @param array|TransformationCreate $transformationCreate transformationCreate (required)
-     *                                                         - $transformationCreate['code'] => (string) The source code of the transformation. (required)
+     *                                                         - $transformationCreate['code'] => (string) It is deprecated. Use the `input` field with proper `type` instead to specify the transformation code.
      *                                                         - $transformationCreate['name'] => (string) The uniquely identified name of your transformation. (required)
+     *                                                         - $transformationCreate['type'] => (array)
+     *                                                         - $transformationCreate['input'] => (array)
      *                                                         - $transformationCreate['description'] => (string) A descriptive name for your transformation of what it does.
      *                                                         - $transformationCreate['authenticationIDs'] => (array) The authentications associated with the current transformation.
      *
@@ -2736,6 +2824,78 @@ class IngestionClient
         }
 
         return $this->sendRequest('POST', $resourcePath, $headers, $queryParameters, $httpBody, $requestOptions);
+    }
+
+    /**
+     * Helper: Chunks the given `objects` list in subset of 1000 elements max in order to make it fit in `batch` requests.
+     *
+     * @param string $indexName          the `indexName` to replace `objects` in
+     * @param array  $objects            the array of `objects` to store in the given Algolia `indexName`
+     * @param array  $action             the `batch` `action` to perform on the given array of `objects`, defaults to `addObject`
+     * @param bool   $waitForTasks       whether or not we should wait until every `batch` tasks has been processed, this operation may slow the total execution time of this method but is more reliable
+     * @param array  $batchSize          The size of the chunk of `objects`. The number of `push` calls will be equal to `length(objects) / batchSize`. Defaults to 1000.
+     * @param array  $referenceIndexName This is required when targeting an index that does not have a push connector setup (e.g. a tmp index), but you wish to attach another index's transformation to it (e.g. the source index name).
+     * @param array  $requestOptions     Request options
+     */
+    public function chunkedPush(
+        $indexName,
+        $objects,
+        $action = 'addObject',
+        $waitForTasks = true,
+        $batchSize = 1000,
+        $referenceIndexName = null,
+        $requestOptions = []
+    ) {
+        $responses = [];
+        $records = [];
+        $count = 0;
+
+        foreach ($objects as $object) {
+            $records[] = $object;
+            $ok = false;
+
+            if (sizeof($records) === $batchSize || $count === sizeof($objects) - 1) {
+                $responses[] = $this->push($indexName, ['action' => $action, 'records' => $records], false, $referenceIndexName, $requestOptions);
+                $records = [];
+            }
+
+            ++$count;
+        }
+
+        if (!empty($records)) {
+            $responses[] = $this->push($indexName, ['action' => $action, 'records' => $records], false, $referenceIndexName, $requestOptions);
+        }
+
+        if ($waitForTasks && !empty($responses)) {
+            $timeoutCalculation = 'Algolia\AlgoliaSearch\Support\Helpers::linearTimeout';
+
+            foreach ($responses as $response) {
+                $retry = 0;
+
+                while ($retry < 50) {
+                    try {
+                        $this->getEvent($response['runID'], $response['eventID']);
+
+                        $ok = true;
+
+                        break;
+                    } catch (NotFoundException $e) {
+                        // just retry
+                    }
+
+                    ++$retry;
+                    usleep(
+                        call_user_func_array($timeoutCalculation, [$this->config->getWaitTaskTimeBeforeRetry(), $retry])
+                    );
+                }
+
+                if (false === $ok) {
+                    throw new ExceededRetriesException('Maximum number of retries (50) exceeded.');
+                }
+            }
+        }
+
+        return $responses;
     }
 
     private function sendRequest($method, $resourcePath, $headers, $queryParameters, $httpBody, $requestOptions, $useReadTransporter = false)

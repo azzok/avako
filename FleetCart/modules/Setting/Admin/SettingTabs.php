@@ -47,6 +47,7 @@ class SettingTabs extends Tabs
             ->add($this->flatRate());
 
         $this->group('payment_methods', trans('setting::settings.tabs.group.payment_methods'))
+            ->add($this->ccavenue())
             ->add($this->paypal())
             ->add($this->stripe())
             ->add($this->paytm())
@@ -338,6 +339,16 @@ class SettingTabs extends Tabs
         });
     }
 
+    private function ccavenue()
+    {
+        return tap(new Tab('ccavenue', "CCAvenue - New Payment Gateway by Ashok"), function (Tab $tab) {
+            $tab->weight(61);
+
+            $tab->fields(['ccavenue_enabled', 'translatable.ccavenue_label', 'translatable.ccavenue_description', 'ccavenue_env', 'ccavenue_client_id', 'ccavenue_secret']);
+
+            $tab->view('setting::admin.settings.tabs.ccavenue');
+        });
+    }
 
     private function paypal()
     {

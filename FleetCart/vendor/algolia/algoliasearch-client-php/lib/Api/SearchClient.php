@@ -5,6 +5,7 @@
 namespace Algolia\AlgoliaSearch\Api;
 
 use Algolia\AlgoliaSearch\Algolia;
+use Algolia\AlgoliaSearch\Configuration\IngestionConfig;
 use Algolia\AlgoliaSearch\Configuration\SearchConfig;
 use Algolia\AlgoliaSearch\Exceptions\ExceededRetriesException;
 use Algolia\AlgoliaSearch\Exceptions\NotFoundException;
@@ -84,12 +85,17 @@ use GuzzleHttp\Psr7\Query;
  */
 class SearchClient
 {
-    public const VERSION = '4.19.0';
+    public const VERSION = '4.23.0';
 
     /**
      * @var ApiWrapperInterface
      */
     protected $api;
+
+    /**
+     * @var IngestionClient
+     */
+    protected $ingestionTransporter;
 
     /**
      * @var SearchConfig
@@ -128,7 +134,23 @@ class SearchClient
             self::getClusterHosts($config)
         );
 
-        return new static($apiWrapper, $config);
+        $client = new static($apiWrapper, $config);
+
+        if (null !== $config->getTransformationRegion()) {
+            $ingestionConfig = IngestionConfig::create($config->getAppId(), $config->getAlgoliaApiKey(), $config->getTransformationRegion());
+
+            if ($hosts = $config->getHosts()) {
+                if ($config->getHasFullHosts()) {
+                    $ingestionConfig = $ingestionConfig->setFullHosts($hosts);
+                } else {
+                    $ingestionConfig = $ingestionConfig->setHosts($hosts);
+                }
+            }
+
+            $client->ingestionTransporter = IngestionClient::createWithConfig($ingestionConfig);
+        }
+
+        return $client;
     }
 
     /**
@@ -650,7 +672,7 @@ class SearchClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
      *
@@ -689,7 +711,7 @@ class SearchClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
      *
@@ -728,7 +750,7 @@ class SearchClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $body           Parameters to send with the custom request. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
@@ -768,7 +790,7 @@ class SearchClient
     /**
      * This method lets you send requests to the Algolia REST API.
      *
-     * @param string $path           Path of the endpoint, anything after \"/1\" must be specified. (required)
+     * @param string $path           Path of the endpoint, for example `1/newFeature`. (required)
      * @param array  $parameters     Query parameters to apply to the current query. (optional)
      * @param array  $body           Parameters to send with the custom request. (optional)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
@@ -1438,7 +1460,7 @@ class SearchClient
      * Retrieves an object with non-null index settings.
      *
      * Required API Key ACLs:
-     *  - search
+     *  - settings
      *
      * @param string $indexName      Name of the index on which to perform the operation. (required)
      * @param array  $requestOptions the requestOptions to send along with the query, they will be merged with the transporter requestOptions
@@ -2937,6 +2959,73 @@ class SearchClient
     }
 
     /**
+     * Helper: Similar to the `replaceAllObjects` method but requires a Push connector (https://www.algolia.com/doc/guides/sending-and-managing-data/send-and-update-your-data/connectors/push/) to be created first, in order to transform records before indexing them to Algolia. The `region` must have been passed to the client instantiation method.
+     *
+     * @param string $indexName      the `indexName` to replace `objects` in
+     * @param array  $objects        the array of `objects` to store in the given Algolia `indexName`
+     * @param array  $batchSize      The size of the chunk of `objects`. The number of `batch` calls will be equal to `length(objects) / batchSize`. Defaults to 1000.
+     * @param array  $requestOptions Request options
+     * @param mixed  $scopes
+     */
+    public function replaceAllObjectsWithTransformation($indexName, $objects, $batchSize = 1000, $scopes = ['settings', 'rules', 'synonyms'], $requestOptions = [])
+    {
+        if (null == $this->ingestionTransporter) {
+            throw new \InvalidArgumentException('`setTransformationRegion` must have been called before calling this method.');
+        }
+
+        $tmpIndexName = $indexName.'_tmp_'.rand(10000000, 99999999);
+
+        try {
+            $copyOperationResponse = $this->operationIndex(
+                $indexName,
+                [
+                    'operation' => 'copy',
+                    'destination' => $tmpIndexName,
+                    'scope' => $scopes,
+                ],
+                $requestOptions
+            );
+
+            $watchResponses = $this->ingestionTransporter->chunkedPush($tmpIndexName, $objects, 'addObject', true, $batchSize, $indexName, $requestOptions);
+
+            $this->waitForTask($tmpIndexName, $copyOperationResponse['taskID']);
+
+            $copyOperationResponse = $this->operationIndex(
+                $indexName,
+                [
+                    'operation' => 'copy',
+                    'destination' => $tmpIndexName,
+                    'scope' => $scopes,
+                ],
+                $requestOptions
+            );
+
+            $this->waitForTask($tmpIndexName, $copyOperationResponse['taskID']);
+
+            $moveOperationResponse = $this->operationIndex(
+                $tmpIndexName,
+                [
+                    'operation' => 'move',
+                    'destination' => $indexName,
+                ],
+                $requestOptions
+            );
+
+            $this->waitForTask($tmpIndexName, $moveOperationResponse['taskID']);
+
+            return [
+                'copyOperationResponse' => $copyOperationResponse,
+                'watchResponses' => $watchResponses,
+                'moveOperationResponse' => $moveOperationResponse,
+            ];
+        } catch (\Throwable $e) {
+            $this->deleteIndex($tmpIndexName);
+
+            throw $e;
+        }
+    }
+
+    /**
      * Helper: Replace all objects in an index using a temporary one.
      * See https://api-clients-automation.netlify.app/docs/add-new-api-client#5-helpers for implementation details.
      *
@@ -3015,6 +3104,27 @@ class SearchClient
     }
 
     /**
+     * Helper: Similar to the `saveObjects` method but requires a Push connector
+     * (https://www.algolia.com/doc/guides/sending-and-managing-data/send-and-update-your-data/connectors/push/)
+     * to be created first, in order to transform records before indexing them to Algolia. The
+     * `region` must have been passed to the client instantiation method.
+     *
+     * @param string $indexName      the `indexName` to replace `objects` in
+     * @param array  $objects        the array of `objects` to store in the given Algolia `indexName`
+     * @param bool   $waitForTasks   Whether or not we should wait until every `batch` tasks has been processed, this operation may slow the total execution time of this method but is more reliable
+     * @param array  $batchSize      The size of the chunk of `objects`. The number of `push` calls will be equal to `length(objects) / batchSize`. Defaults to 1000.
+     * @param array  $requestOptions Request options
+     */
+    public function saveObjectsWithTransformation($indexName, $objects, $waitForTasks = false, $batchSize = 1000, $requestOptions = [])
+    {
+        if (null == $this->ingestionTransporter) {
+            throw new \InvalidArgumentException('`setTransformationRegion` must have been called before calling this method.');
+        }
+
+        return $this->ingestionTransporter->chunkedPush($indexName, $objects, 'addObject', $waitForTasks, $batchSize, $requestOptions);
+    }
+
+    /**
      * Helper: Deletes every records for the given objectIDs. The `chunkedBatch` helper is used under the hood, which creates a `batch` requests with at most 1000 objectIDs in it.
      *
      * @param string $indexName      the `indexName` to delete `objectIDs` from
@@ -3047,6 +3157,28 @@ class SearchClient
     public function partialUpdateObjects($indexName, $objects, $createIfNotExists, $waitForTasks = false, $batchSize = 1000, $requestOptions = [])
     {
         return $this->chunkedBatch($indexName, $objects, (true == $createIfNotExists) ? 'partialUpdateObject' : 'partialUpdateObjectNoCreate', $waitForTasks, $batchSize, $requestOptions);
+    }
+
+    /**
+     * Helper: Similar to the `partialUpdateObjects` method but requires a Push connector
+     * (https://www.algolia.com/doc/guides/sending-and-managing-data/send-and-update-your-data/connectors/push/)
+     * to be created first, in order to transform records before indexing them to Algolia. The
+     * `region` must have been passed to the client instantiation method.
+     *
+     * @param string $indexName         the `indexName` to replace `objects` in
+     * @param array  $objects           the array of `objects` to store in the given Algolia `indexName`
+     * @param bool   $createIfNotExists To be provided if non-existing objects are passed, otherwise, the call will fail..
+     * @param bool   $waitForTasks      Whether or not we should wait until every `batch` tasks has been processed, this operation may slow the total execution time of this method but is more reliable
+     * @param array  $batchSize         The size of the chunk of `objects`. The number of `push` calls will be equal to `length(objects) / batchSize`. Defaults to 1000.
+     * @param array  $requestOptions    Request options
+     */
+    public function partialUpdateObjectsWithTransformation($indexName, $objects, $createIfNotExists, $waitForTasks = false, $batchSize = 1000, $requestOptions = [])
+    {
+        if (null == $this->ingestionTransporter) {
+            throw new \InvalidArgumentException('`setTransformationRegion` must have been called before calling this method.');
+        }
+
+        return $this->ingestionTransporter->chunkedPush($indexName, $objects, (true == $createIfNotExists) ? 'partialUpdateObject' : 'partialUpdateObjectNoCreate', $waitForTasks, $batchSize, $requestOptions);
     }
 
     /**

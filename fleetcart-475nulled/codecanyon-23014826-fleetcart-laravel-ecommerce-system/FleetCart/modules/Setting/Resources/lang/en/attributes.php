@@ -105,6 +105,8 @@ return [
     'paypal_client_id' => 'Client ID',
     'paypal_secret' => 'Secret',
 
+    'ccavenue_enabled' => 'Status',
+
     'stripe_enabled' => 'Status',
     'translatable.stripe_label' => 'Label',
     'translatable.stripe_description' => 'Description',

@@ -22,6 +22,7 @@ use Modules\Payment\Gateways\MercadoPago;
 use Modules\Payment\Gateways\AuthorizeNet;
 use Modules\Payment\Gateways\BankTransfer;
 use Modules\Payment\Gateways\CheckPayment;
+use Modules\Payment\Gateways\CCAvenue;
 
 class PaymentServiceProvider extends ServiceProvider
 {
@@ -36,6 +37,7 @@ class PaymentServiceProvider extends ServiceProvider
             return;
         }
 
+        $this->registerCCAvenue();
         $this->registerPayPalExpress();
         $this->registerStripe();
         $this->registerPaytm();
@@ -66,6 +68,12 @@ class PaymentServiceProvider extends ServiceProvider
     {
     }
 
+    private function registerCCAvenue()
+    {
+        if ($this->enabled('ccavenue')) {
+            Gateway::register('ccavenue', new CCAvenue());
+        }
+    }
 
     private function registerPayPalExpress()
     {

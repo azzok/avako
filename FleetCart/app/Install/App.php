@@ -67,6 +67,11 @@ class App
                 'paypal_description' => 'Pay via your PayPal account.',
                 'stripe_label' => 'Stripe',
                 'stripe_description' => 'Pay via credit or debit card.',
+
+                'ccavenue_label' => 'CCAvenue',
+                'ccavenue_description' => 'CCAvenue via credit or debit card.',
+
+
                 'paytm_label' => 'Paytm',
                 'paytm_description' => 'The best payment gateway provider in India for e-payment through credit card, debit card & net banking.',
                 'razorpay_label' => 'Razorpay',

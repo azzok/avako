@@ -39,6 +39,10 @@ class SettingDatabaseSeeder extends Seeder
                 'flat_rate_label' => 'Flat Rate',
                 'paypal_label' => 'PayPal',
                 'paypal_description' => 'Pay via your PayPal account.',
+
+                'ccavenue_label' => 'CCAvenue',
+                'ccavenue_description' => 'CCAvenue via credit or debit card.',
+
                 'stripe_label' => 'Stripe',
                 'stripe_description' => 'Pay via credit or debit card.',
                 'paytm_label' => 'Paytm',

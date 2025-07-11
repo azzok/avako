@@ -107,6 +107,11 @@ class UpdateSettingRequest extends Request
             'paypal_client_id' => 'required_if:paypal_enabled,1',
             'paypal_secret' => 'required_if:paypal_enabled,1',
 
+            'ccavenue_enabled' => 'required|boolean',
+            'translatable.ccavenue_label' => 'required_if:ccavenue_enabled,1',
+            'translatable.ccavenue_description' => 'required_if:ccavenue_enabled,1',
+            
+
             'stripe_enabled' => 'required|boolean',
             'translatable.stripe_label' => 'required_if:stripe_enabled,1',
             'translatable.stripe_description' => 'required_if:stripe_enabled,1',

@@ -14,6 +14,12 @@
                     >
 
                     <label :for="name" x-text="gateway.label"></label>
+                    <template x-if="name === 'ccavenue'">
+                        <img 
+                            style="width: 70px; margin-left: 10px;" 
+                            src="https://images.seeklogo.com/logo-png/44/2/ccavenue-logo-png_seeklogo-440305.png" 
+                        />
+                    </template>
 
                     <span class="helper-text" x-text="gateway.description"></span>
                 </div>
