@@ -86,30 +86,35 @@ class CCAvenue implements GatewayInterface
         if (currency() !== 'INR') {
             throw new Exception(trans('payment::messages.only_supports_inr'));
         }
-        // return $order;
-        // return array(
-        //     $this->merchantId,
-        //     $this->accessCode,
-        //     $this->workingKey,
-        //     $this->testMode,
-        //     $this->currency,
-        //     $this->redirectUrl,
-        //     $this->cancelUrl
-        // );
-        
         $merchantData = $this->prepareMerchantData($order, $request);
         $encryptedData = $this->crypto->encrypt($merchantData, $this->workingKey);
         
-        return [
-            'encrypted_data' => $encryptedData,
+        // return [
+        //     'encrypted_data' => $encryptedData,
+        //     'access_code' => $this->accessCode,
+        //     'merchant_id' => $this->merchantId,
+        //     'action_url' => $this->getActionUrl(),
+        //     'redirect_url' => $this->getRedirectUrl($order),
+        //     'cancel_url' => $this->getCancelUrl($order)
+        // ];
+        return new CCAvenueResponse($order, [
+            'encRequest' => $encryptedData,
             'access_code' => $this->accessCode,
             'merchant_id' => $this->merchantId,
             'action_url' => $this->getActionUrl(),
             'redirect_url' => $this->getRedirectUrl($order),
             'cancel_url' => $this->getCancelUrl($order)
-        ];
+        ]);
 
-        // $this->crypto = new CCAvenueCrypto();
+        // return [
+        //     'encrypted_data' => $encryptedData,
+        //     'access_code' => $this->accessCode,
+        //     'merchant_id' => $this->merchantId,
+        //     'action_url' => $this->getActionUrl(),
+        //     'redirect_url' => $this->getRedirectUrl($order),
+        //     'cancel_url' => $this->getCancelUrl($order)
+        // ];
+
         // $payment = new Payment();
         // $payment->setMerchantId(setting('ccavenue_merchant_id'));
         // $payment->setAccessCode(setting('ccavenue_access_code'));
