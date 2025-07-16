@@ -18,6 +18,7 @@ class PaymentCanceledController
      */
     public function store(Request $request, $orderId)
     {
+        dd($request->all());
         Order::where('id', $orderId)->forceDelete();
 
         Cart::restoreStock();

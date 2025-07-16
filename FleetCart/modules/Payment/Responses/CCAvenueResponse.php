@@ -136,7 +136,7 @@ class CCAvenueResponse extends GatewayResponse implements ShouldRedirect, HasTra
         
         // Add CCAvenue specific data
         $ccavenueData = [
-            'encrypted_data' => $this->data['encrypted_data'] ?? '',
+            'encRequest' => $this->data['encRequest'] ?? '',
             'access_code' => $this->data['access_code'] ?? '',
             'merchant_id' => $this->data['merchant_id'] ?? '',
             'action_url' => $this->data['action_url'] ?? '',

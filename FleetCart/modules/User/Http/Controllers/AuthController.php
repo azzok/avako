@@ -159,9 +159,19 @@ class AuthController extends BaseAuthController
     }
 
 
-    private function extractName($name)
+    // private function extractName($name)
+    // {
+    //     return explode(' ', $name, 2);
+    // }
+
+    private function extractName($fullName)
     {
-        return explode(' ', $name, 2);
+        $nameParts = explode(' ', $fullName, 2);
+
+        $firstName = $nameParts[0] ?? '';
+        $lastName = $nameParts[1] ?? ''; // ✅ if no last name, set as empty string
+
+        return [$firstName, $lastName];
     }
 
 
