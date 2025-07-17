@@ -38,6 +38,7 @@ class CheckoutCompleteController
                     // $rcvdString=decrypt($encResponse,$workingKey);		//Crypto Decryption used as per the specified working key.
 
 
+                    
                     $workingKey = config('ccavenue.working_key');
                     $paymentRequestDetails = request()->all();
                     dd($paymentRequestDetails);
