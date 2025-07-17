@@ -124,12 +124,15 @@ class CCAvenue implements GatewayInterface
     {
         // This should point to your CCAvenue payment response handler route
         return route('checkout.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
+        // return route('ccavenue.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
     }
 
     private function getCancelUrl($order)
     {
         // Optional: customize as needed
-        return route('checkout.payment_canceled.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
+        // return route('checkout.payment_canceled.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
+        // return route('ccavenue.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
+        return route('checkout.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
     }
 
     // New code 

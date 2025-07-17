@@ -14,6 +14,8 @@ use Modules\Checkout\Events\OrderPlaced;
 use Modules\Checkout\Services\OrderService;
 use Modules\Payment\Libraries\Bkash\BkashService;
 use Modules\Payment\Libraries\Nagad\NagadPayment;
+use Modules\Payment\CCAvenue\CCAvenueCrypto;
+
 
 class CheckoutCompleteController
 {
@@ -27,6 +29,59 @@ class CheckoutCompleteController
      */
     public function store(int $orderId, OrderService $orderService)
     {
+
+        if (request()->query('paymentMethod') === 'ccavenue') {
+             try {
+                       
+                    // $workingKey='AC2F260942642728D34730B8BE54523C';		//Working Key should be provided here.
+                    // $encResponse=$_POST["encResp"];			//This is the response sent by the CCAvenue Server
+                    // $rcvdString=decrypt($encResponse,$workingKey);		//Crypto Decryption used as per the specified working key.
+
+
+                    $workingKey = config('ccavenue.working_key');
+                    $paymentRequestDetails = request()->all();
+                    dd($paymentRequestDetails);
+                    $encResponse=$paymentRequestDetails->encResp;	
+                    $crypto = new CCAvenueCrypto();
+                    $rcvdString = $this->crypto->decrypt($encResponse, $workingKey);
+                    // dd($rcvdString);
+                    $order_status="";
+                    $decryptValues=explode('&', $rcvdString);
+                    $dataSize=sizeof($decryptValues);
+
+                    for($i = 0; $i < $dataSize; $i++) 
+                    {
+                        $information=explode('=',$decryptValues[$i]);
+                        if($i==3)	$order_status=$information[1];
+                    }
+
+                    // if($order_status==="Success")
+                    // {
+                    //     echo "<br>Thank you for shopping with us. Your credit card has been charged and your transaction is successful. We will be shipping your order to you soon.";
+                    // }
+                    // else if($order_status==="Aborted")
+                    // {
+                    //     echo "<br>Thank you for shopping with us.We will keep you posted regarding the status of your order through e-mail";
+                    // }
+                    // else if($order_status==="Failure")
+                    // {
+                    //     echo "<br>Thank you for shopping with us.However,the transaction has been declined.";
+                    // }
+                    // else
+                    // {
+                    //     echo "<br>Security Error. Illegal access detected";
+                    // }
+
+
+                
+                if($order_status != 'Success'){
+                    return redirect()->route('checkout.payment_canceled.store', ['orderId' => $orderId, 'paymentMethod' => request()->query('paymentMethod')]);
+                }
+
+            } catch (Exception $e) {
+                return redirect()->route('checkout.payment_canceled.store', ['orderId' => $orderId, 'paymentMethod' => request()->query('paymentMethod')]);
+            }
+        }
         if (request()->query('paymentMethod') === 'iyzico') {
             try {
                 $request = new \Iyzipay\Request\RetrieveCheckoutFormRequest();
