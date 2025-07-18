@@ -37,8 +37,6 @@ class CCAvenue implements GatewayInterface
         
         $this->testMode = false;
         $this->crypto = new CCAvenueCrypto();
-        // $this->currency = setting('ccavenue_currency', 'INR');
-        
     }
 
     private function prepareMerchantData($order, $data)
@@ -51,7 +49,7 @@ class CCAvenue implements GatewayInterface
             'currency' => $this->currency,
             '¤cy' => $this->currency,
             'redirect_url' => $this->getRedirectUrl($order),
-            'cancel_url' => $this->getCancelUrl($order),
+            'cancel_url' => $this->getRedirectUrl($order),
             'language' => 'EN',
 
             'billing_name' => $order->billing_first_name." ".$order->billing_last_name,
@@ -82,8 +80,6 @@ class CCAvenue implements GatewayInterface
             $merchant_data.=$key.'='.$value.'&';
         }
         return $merchant_data;  
-        // return "tid=1754675591173&merchant_id=3092990&order_id=123654789&amount=1.00¤cy=INR&redirect_url=http://localhost/Non_Seamless_kit/ccavResponseHandler.php&cancel_url=http://localhost/Non_Seamless_kit/ccavResponseHandler.php&language=EN&";
-        // return $this->arrayToString($merchantData);
     }
 
 
@@ -106,50 +102,46 @@ class CCAvenue implements GatewayInterface
             // 'merchant_id' => $this->merchantId,
             'action_url' => $action_url,
             'redirect_url' => $this->getRedirectUrl($order),
-            'cancel_url' => $this->getCancelUrl($order)
+            'cancel_url' => $this->getRedirectUrl($order)
         ]);
     }
 
     public function complete(Order $order)
     {
-        $payment = new Payment();
-        $payment->setWorkingKey(setting('ccavenue_working_key'));
+        $responseData = $this->handleCCAvenueResponse(request('encResp'));
+        return new CCAvenueResponse($order, $responseData);
+    }
 
-        $response = $payment->handleResponse(request('encResp'));
+    public function handleCCAvenueResponse($encResponse){
+        $rcvdString = $this->crypto->decrypt($encResponse, $this->workingKey);
+        $decryptValues=explode('&', $rcvdString);
 
-        return new CCAvenueResponse($order, $response);
+        // Convert to associative array
+        $responseData = [];
+        foreach ($decryptValues as $keyValue) {
+            $parts = explode('=', $keyValue, 2);
+            if (count($parts) == 2) {
+                $key = urldecode($parts[0]);
+                $value = urldecode($parts[1]);
+                $responseData[$key] = $value;
+            }
+        }
+        $order_status = $responseData['order_status'];
+        return $responseData;
     }
 
     private function getRedirectUrl($order)
     {
-        // This should point to your CCAvenue payment response handler route
-        return route('checkout.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
-        // return route('ccavenue.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
-    }
-
-    private function getCancelUrl($order)
-    {
-        // Optional: customize as needed
-        // return route('checkout.payment_canceled.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
-        // return route('ccavenue.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
         return route('checkout.complete.store', ['orderId' => $order->id, 'paymentMethod' => 'ccavenue']);
     }
 
-    // New code 
-       private function arrayToString($data)
+    private function arrayToString($data)
     {
         $string = '';
         foreach ($data as $key => $value) {
             $string .= $key . '=' . $value . '&';
         }
         return rtrim($string, '&');
-    }
-
-    private function getActionUrl()
-    {
-        return $this->testMode 
-            ? 'https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction'
-            : 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
     }
 
     public function getRules()
