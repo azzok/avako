@@ -20,3 +20,6 @@ Route::post('/ccavenue/response', [App\Http\Controllers\CCAvenueController::clas
 Route::any('/ccavenue_response/{orderId}/complete', 'CCAvenuePaymentComplateController@handleResponse')
     ->name('ccavenue.complete.store')
     ->withoutMiddleware(\FleetCart\Http\Middleware\VerifyCsrfToken::class);
+
+
+    
