@@ -105,8 +105,11 @@ return [
     'paypal_client_id' => 'Client ID',
     'paypal_secret' => 'Secret',
 
+<<<<<<< HEAD
     'ccavenue_enabled' => 'Status',
 
+=======
+>>>>>>> 561d5920a (Initial commit)
     'stripe_enabled' => 'Status',
     'translatable.stripe_label' => 'Label',
     'translatable.stripe_description' => 'Description',

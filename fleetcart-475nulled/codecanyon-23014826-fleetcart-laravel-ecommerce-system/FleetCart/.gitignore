@@ -8,9 +8,17 @@
 .DS_Store
 
 #Env
+<<<<<<< HEAD
 
 #Dependencies
 node_modules/
+=======
+.env
+
+#Dependencies
+node_modules/
+/vendor/
+>>>>>>> 561d5920a (Initial commit)
 
 #Assets
 public/build/
